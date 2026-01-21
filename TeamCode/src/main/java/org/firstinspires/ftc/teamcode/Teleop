@@ -1,0 +1,251 @@
+package org.firstinspires.ftc.teamcode;
+
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.Servo;
+
+@TeleOp(name = "OmniDriveShooterTeleOpV3")
+public class OmniDriveShooterTeleOpV3 extends OpMode {
+
+    // =====================
+    // DRIVE MOTORS (Control Hub) — Gamepad 1
+    // =====================
+    DcMotor frontLeft, frontRight, backLeft, backRight;
+
+    // =====================
+    // OPERATOR MOTORS — Gamepad 2 (hold-to-run)
+    // =====================
+    DcMotor motor1; // config name: "motor1"
+    DcMotor motor2; // config name: "motor2"
+
+    // Shooter / feeder + servo
+    DcMotor shootingmotor, feedermotor;
+    Servo servo1;
+
+    // Servo positions
+    final double SERVO_MIN = 0.0;
+    final double SERVO_MID = .25;
+    final double SERVO_MAX = 0.65;
+
+    // Drive tuning
+    double deadzone = 0.05;
+    double driveScale = 1.0;
+
+    // Motor1 / Motor2 speeds
+    double motor1Speed = 0.5;
+    double motor2Speed = 0.5;
+    final double motorStep = 0.05;
+
+    // Direction toggles
+    boolean motor1Forward = true;
+    boolean motor2Forward = true;
+
+    // Edge detection (press vs hold)
+    boolean ltPrev = false, lbPrev = false;
+    boolean rtPrev = false, rbPrev = false;
+    boolean xPrev = false, yPrev = false;
+
+    // Shooter speed (dpad left/right)
+    double shooterSpeed = 0.8;
+    final double shooterStep = 0.05;
+    boolean dpadLeftPrev = false, dpadRightPrev = false;
+
+    // Shooter sequence timing (dpad up)
+    boolean shootingSequenceActive = false;
+    long shootingStartTime = 0;
+    boolean dpadUpPrev = false;
+
+    @Override
+    public void init() {
+        // Drive motors
+        frontLeft  = hardwareMap.dcMotor.get("frontLeft");
+        frontRight = hardwareMap.dcMotor.get("frontRight");
+        backLeft   = hardwareMap.dcMotor.get("backLeft");
+        backRight  = hardwareMap.dcMotor.get("backRight");
+
+        // Operator motors
+        motor1 = hardwareMap.dcMotor.get("motor1");
+        motor2 = hardwareMap.dcMotor.get("motor2");
+
+        // Shooter / feeder
+        shootingmotor = hardwareMap.dcMotor.get("shootingmotor");
+        feedermotor   = hardwareMap.dcMotor.get("feedermotor");
+
+        // Servo
+        servo1 = hardwareMap.servo.get("servo1");
+        servo1.setPosition(SERVO_MIN);
+
+        // Common drivetrain direction: reverse left side
+        frontLeft.setDirection(DcMotor.Direction.REVERSE);
+        backLeft.setDirection(DcMotor.Direction.REVERSE);
+
+        // Stop systems
+        motor1.setPower(0);
+        motor2.setPower(0);
+        shootingmotor.setPower(0);
+        feedermotor.setPower(0);
+
+        telemetry.addLine("READY: GP1 drive | GP2 hold A/B motors, X/Y reverse, triggers/bumpers speed, DpadUp shoot, Dpad L/R shooter speed");
+        telemetry.update();
+    }
+
+    @Override
+    public void loop() {
+
+        // =====================
+        // OMNI DRIVE — GAMEPAD 1 ONLY
+        // =====================
+        double y  = -gamepad1.left_stick_y;
+        double x  =  gamepad1.left_stick_x;
+        double rx =  gamepad1.right_stick_x;
+
+        if (Math.abs(y)  < deadzone) y  = 0;
+        if (Math.abs(x)  < deadzone) x  = 0;
+        if (Math.abs(rx) < deadzone) rx = 0;
+
+        double fl = y + x + rx;
+        double bl = y - x + rx;
+        double fr = y - x - rx;
+        double br = y + x - rx;
+
+        double max = Math.max(1.0,
+                Math.max(Math.abs(fl),
+                Math.max(Math.abs(bl),
+                Math.max(Math.abs(fr), Math.abs(br)))));
+
+        frontLeft.setPower((fl / max) * driveScale);
+        backLeft.setPower((bl / max) * driveScale);
+        frontRight.setPower((fr / max) * driveScale);
+        backRight.setPower((br / max) * driveScale);
+
+        // =====================
+        // GAMEPAD 2: DIRECTION TOGGLES (tap)
+        // X toggles motor1 direction, Y toggles motor2 direction
+        // =====================
+        boolean xNow = gamepad2.x;
+        boolean yNow = gamepad2.y;
+
+        if (xNow && !xPrev) motor1Forward = !motor1Forward;
+        if (yNow && !yPrev) motor2Forward = !motor2Forward;
+
+        xPrev = xNow;
+        yPrev = yNow;
+
+        // =====================
+        // GAMEPAD 2: SPEED ADJUST
+        // motor1: LT +, LB -
+        // motor2: RT +, RB -
+        // =====================
+        boolean ltNow = gamepad2.left_trigger > 0.3;
+        boolean lbNow = gamepad2.left_bumper;
+
+        if (ltNow && !ltPrev) motor1Speed += motorStep;
+        if (lbNow && !lbPrev) motor1Speed -= motorStep;
+
+        ltPrev = ltNow;
+        lbPrev = lbNow;
+
+        motor1Speed = clamp01(motor1Speed);
+
+        boolean rtNow = gamepad2.right_trigger > 0.3;
+        boolean rbNow = gamepad2.right_bumper;
+
+        if (rtNow && !rtPrev) motor2Speed += motorStep;
+        if (rbNow && !rbPrev) motor2Speed -= motorStep;
+
+        rtPrev = rtNow;
+        rbPrev = rbNow;
+
+        motor2Speed = clamp01(motor2Speed);
+
+        // =====================
+        // GAMEPAD 2: HOLD-TO-RUN
+        // A holds motor1, B holds motor2
+        // =====================
+        double m1Power = 0.0;
+        double m2Power = 0.0;
+
+        if (gamepad2.a) {
+            m1Power = motor1Forward ? motor1Speed : -motor1Speed;
+        }
+        if (gamepad2.b) {
+            m2Power = motor2Forward ? motor2Speed : -motor2Speed;
+        }
+
+        motor1.setPower(m1Power);
+        motor2.setPower(m2Power);
+
+        // =====================
+        // GAMEPAD 2: Adjust shooter speed with Dpad Left/Right
+        // =====================
+        boolean dpadLeftNow  = gamepad2.dpad_left;
+        boolean dpadRightNow = gamepad2.dpad_right;
+
+        if (dpadRightNow && !dpadRightPrev) shooterSpeed += shooterStep;
+        if (dpadLeftNow  && !dpadLeftPrev)  shooterSpeed -= shooterStep;
+
+        dpadLeftPrev = dpadLeftNow;
+        dpadRightPrev = dpadRightNow;
+
+        shooterSpeed = clamp01(shooterSpeed);
+
+        // =====================
+        // GAMEPAD 2: DPAD UP → START SHOOT SEQUENCE
+        // 0.0s  shooter spins up (shooterSpeed)
+        // 1.0s  feeder ON + servo to 0.65
+        // 2.0s  servo back to 0
+        // 3.0s  shooter+feeder OFF
+        // =====================
+        boolean dpadUpNow = gamepad2.dpad_up;
+        if (dpadUpNow && !dpadUpPrev && !shootingSequenceActive) {
+            shootingSequenceActive = true;
+            shootingStartTime = System.currentTimeMillis();
+        }
+        dpadUpPrev = dpadUpNow;
+
+        if (shootingSequenceActive) {
+            long elapsed = System.currentTimeMillis() - shootingStartTime;
+
+            if (elapsed < 3000) {
+                shootingmotor.setPower(shooterSpeed);
+                feedermotor.setPower(1.0);
+            }
+
+
+
+            if(elapsed>0 && elapsed<1200){
+                servo1.setPosition(SERVO_MID);
+            }
+            else if (elapsed >= 1200 && elapsed < 2000) {
+                servo1.setPosition(SERVO_MAX);
+            } else {
+                servo1.setPosition(SERVO_MIN);
+            }
+
+            if (elapsed >= 3000) {
+                shootingmotor.setPower(0.0);
+                feedermotor.setPower(0.0);
+                servo1.setPosition(SERVO_MIN);
+                shootingSequenceActive = false;
+            }
+        } else {
+            servo1.setPosition(SERVO_MIN);
+        }
+
+        // Optional telemetry (uncomment if you want)
+
+        telemetry.addData("motor1Speed", "%.2f", motor1Speed);
+        telemetry.addData("motor1Dir", motor1Forward ? "FWD" : "REV");
+        telemetry.addData("motor2Speed", "%.2f", motor2Speed);
+        telemetry.addData("motor2Dir", motor2Forward ? "FWD" : "REV");
+        telemetry.addData("shooterSpeed", "%.2f", shooterSpeed);
+        telemetry.addData("shootingActive", shootingSequenceActive);
+        telemetry.update();
+
+    }
+
+    private double clamp01(double v) {
+        return Math.max(0.0, Math.min(1.0, v));
+    }
+}

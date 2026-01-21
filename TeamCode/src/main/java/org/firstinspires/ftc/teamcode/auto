@@ -1,0 +1,54 @@
+package org.firstinspires.ftc.teamcode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+
+@Autonomous(name = "DriveForward2Seconds")
+public class DriveForward2Seconds extends LinearOpMode {
+
+    DcMotor frontLeft, frontRight, backLeft, backRight;
+
+    @Override
+    public void runOpMode() {
+
+        // Map motors (must match Robot Configuration)
+        frontLeft  = hardwareMap.dcMotor.get("frontLeft");
+        frontRight = hardwareMap.dcMotor.get("frontRight");
+        backLeft   = hardwareMap.dcMotor.get("backLeft");
+        backRight  = hardwareMap.dcMotor.get("backRight");
+
+        // Reverse left side if needed (same as your TeleOp)
+        frontLeft.setDirection(DcMotor.Direction.REVERSE);
+        backLeft.setDirection(DcMotor.Direction.REVERSE);
+
+        // Make sure motors are stopped
+        frontLeft.setPower(0);
+        frontRight.setPower(0);
+        backLeft.setPower(0);
+        backRight.setPower(0);
+
+        telemetry.addLine("Ready to run Auto");
+        telemetry.update();
+
+        waitForStart();
+
+        if (opModeIsActive()) {
+
+            // ===== MOVE FORWARD =====
+            frontLeft.setPower(0.5);
+            backLeft.setPower(0.5);
+            frontRight.setPower(0.5);
+            backRight.setPower(0.5);
+
+            sleep(2000); // 2 seconds
+
+            // ===== STOP =====
+            frontLeft.setPower(0);
+            backLeft.setPower(0);
+            frontRight.setPower(0);
+            backRight.setPower(0);
+        }
+    }
+}
+
